@@ -13,8 +13,8 @@ This is a Django-based backend for managing Amazon reseller operations. It inclu
 ### 1. Clone the Repository
 
 ```sh
-git clone <repository-url>
-cd <repository-directory>
+git clone https://github.com/rahulg0/AmazonResellerBackend.git
+cd AmazonResellerBackend
 ```
 
 ### 2. Create and Activate a Virtual Environment
