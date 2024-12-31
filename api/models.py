@@ -10,8 +10,8 @@ class PurchaseOrder(models.Model):
   amount_per_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
   paid_with = models.CharField(max_length=255, blank=True)
   asin = models.CharField(max_length=20, blank=True)
-  profit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-  profit_percentage = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+  profit = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+  profit_percentage = models.DecimalField(max_digits=10, decimal_places=3, default=0)
   edit = models.BooleanField(default=False)
   invoice_path = models.CharField(default='',max_length=255)
   available_quantity = models.IntegerField(blank=True, null=True)
@@ -68,10 +68,12 @@ class Order(models.Model):
     ConditionId = models.CharField(max_length=50)
     PromotionDiscount = models.JSONField(default=dict)
     OrderItemId = models.CharField(max_length=100)
+    profit = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    profit_percentage = models.DecimalField(max_digits=10, decimal_places=3, default=0)
 
     def __str__(self):
         return self.AmazonOrderId
 
 class OrderItem(models.Model):
-   ASIN = models.CharField(max_length=50)
+   ASIN = models.CharField(max_length=50, primary_key=True)
    QuantityLeft = models.IntegerField(default=0)

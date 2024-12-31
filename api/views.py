@@ -28,7 +28,8 @@ def calculate_profit(selling_price, asin, quantity):
     with transaction.atomic():
         selling_price = Decimal(str(selling_price))
         orders = PurchaseOrder.objects.filter(asin=asin).select_for_update().order_by('created_at')
-
+        profit = 0
+        total_amount =0
         for order in orders:
             if quantity <= 0:
                 break
@@ -37,6 +38,8 @@ def calculate_profit(selling_price, asin, quantity):
                 if order.available_quantity >= quantity:
                     order.available_quantity -= quantity
                     order.profit += (selling_price - order.amount_per_unit) * quantity
+                    profit = (selling_price - order.amount_per_unit) * quantity
+                    total_amount += order.amount_per_unit * quantity
                     order.profit_percentage = (order.profit / (order.amount_per_unit * quantity)) * 100
                     order.save()
                     quantity = 0
@@ -45,19 +48,25 @@ def calculate_profit(selling_price, asin, quantity):
                     order.available_quantity = 0
                     order.profit += (selling_price - order.amount_per_unit) * remaining_quantity
                     order.profit_percentage = (order.profit / (order.amount_per_unit * remaining_quantity)) * 100
+                    profit = (selling_price - order.amount_per_unit) * remaining_quantity
+                    total_amount += order.amount_per_unit * remaining_quantity
                     order.save()
                     quantity -= remaining_quantity
-
+        profit_percentage = round((profit / total_amount) * 100, 2)
         if quantity > 0:
             raise ValueError(f"Not enough stock available for ASIN {asin}. Remaining quantity to subtract: {quantity}")
+        return profit,profit_percentage
 
 def check_quantity(asin, quantity):
-    item = OrderItem.objects.get(ASIN=asin)
-    if item.QuantityLeft < quantity:
-        return False
-    item.QuantityLeft -= quantity
-    item.save()
-    return True
+    try:
+        item = OrderItem.objects.get(ASIN=asin)        
+        if item and item.QuantityLeft < quantity:
+            return False        
+        item.QuantityLeft -= quantity
+        item.save()
+        return True
+    except OrderItem.DoesNotExist:
+        return "ItemNotFound"
 
 
 class PurchaseOrderView(APIView):
@@ -126,6 +135,7 @@ class OrderAPIView(APIView):
         try:
             invalid_orders = []
             serialized_data = []
+            not_found_items = []
             
             orders_data = request.data if isinstance(request.data, list) else [request.data]
 
@@ -134,19 +144,24 @@ class OrderAPIView(APIView):
                 quantity = data.get("NumberOfItemsShipped", 0)
                 selling_price = data.get("ItemPrice", {}).get("Amount")
                 print(quantity,asin)
-
-                if check_quantity(asin, quantity):
+                if check_quantity(asin, quantity) == True:
                     logger.info(f"Valid order received for ASIN {asin}")
-                    serialized_data.append(data)
                     if selling_price is not None:
-                        calculate_profit(
+                        profit , profit_percentage = calculate_profit(
                             selling_price=float(selling_price),
                             asin=asin,
                             quantity=quantity,
                         )
+                        print(profit,profit_percentage)
+                        data['profit'] = profit
+                        data['profit_percentage'] = Decimal(profit_percentage)
+                        serialized_data.append(data)
                     else:
                         logger.error(f"Invalid selling price for ASIN {asin}")
                         invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
+                elif check_quantity(asin, quantity) == "ItemNotFound":
+                    logger.error(f"Item not found for ASIN {asin}")
+                    not_found_items.append(asin)
                 else:
                     logger.error(f"Invalid quantity for ASIN {asin}")
                     invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
@@ -170,6 +185,7 @@ class OrderAPIView(APIView):
                     {
                         "message": "Data created successfully",
                         "InvalidAmazonOrderId": invalid_orders,
+                        "ItemNotFound": not_found_items,
                     },
                     status=status.HTTP_201_CREATED,
                 )
