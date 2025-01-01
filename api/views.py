@@ -13,6 +13,8 @@ import logging
 import base64
 from decimal import Decimal
 from django.db import transaction
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 
 #logger configuration
 logger = logging.getLogger(__name__)
@@ -125,6 +127,12 @@ class PurchaseOrderView(APIView):
                 return Response({"error": "No order uuid provided"}, status=status.HTTP_400_BAD_REQUEST)
             purchase_order = PurchaseOrder.objects.get(order_uuid=order_uuid)
             purchase_order.delete()
+            asin = purchase_order.ASIN
+            available_quantity = purchase_order.available_quantity
+            order_item = Order.objects.get(asin=asin)
+            if available_quantity> 0 and order_item:
+                order_item.QuantityLeft -= available_quantity
+                order_item.save()
             return Response({"message": "Data deleted successfully"}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(e)
@@ -141,30 +149,35 @@ class OrderAPIView(APIView):
 
             for data in orders_data:
                 asin = data.get("ASIN")
+                amazon_order_id = data.get("AmazonOrderId")
                 quantity = data.get("NumberOfItemsShipped", 0)
                 selling_price = data.get("ItemPrice", {}).get("Amount")
                 print(quantity,asin)
-                if check_quantity(asin, quantity) == True:
-                    logger.info(f"Valid order received for ASIN {asin}")
-                    if selling_price is not None:
-                        profit , profit_percentage = calculate_profit(
-                            selling_price=float(selling_price),
-                            asin=asin,
-                            quantity=quantity,
-                        )
-                        print(profit,profit_percentage)
-                        data['profit'] = profit
-                        data['profit_percentage'] = Decimal(profit_percentage)
-                        serialized_data.append(data)
+                if not Order.objects.filter(AmazonOrderId=amazon_order_id).exists():
+                    if check_quantity(asin, quantity) == True:
+                        logger.info(f"Valid order received for ASIN {asin}")
+                        if selling_price is not None:
+                            profit , profit_percentage = calculate_profit(
+                                selling_price=float(selling_price),
+                                asin=asin,
+                                quantity=quantity,
+                            )
+                            print(profit,profit_percentage)
+                            data['profit'] = profit
+                            data['profit_percentage'] = Decimal(profit_percentage)
+                            serialized_data.append(data)
+                        else:
+                            logger.error(f"Invalid selling price for ASIN {asin}")
+                            invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
+                    elif check_quantity(asin, quantity) == "ItemNotFound":
+                        logger.error(f"Item not found for ASIN {asin}")
+                        not_found_items.append(asin)
                     else:
-                        logger.error(f"Invalid selling price for ASIN {asin}")
+                        logger.error(f"Invalid quantity for ASIN {asin}")
                         invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
-                elif check_quantity(asin, quantity) == "ItemNotFound":
-                    logger.error(f"Item not found for ASIN {asin}")
-                    not_found_items.append(asin)
                 else:
-                    logger.error(f"Invalid quantity for ASIN {asin}")
-                    invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
+                    logger.error(f"Order already exists for AmazonOrderId {amazon_order_id}")
+                    invalid_orders.append(amazon_order_id)
 
             # Serialize and save valid orders
             serializer = OrderSerializer(data=serialized_data, many=True)
@@ -236,3 +249,16 @@ class OrderAPIView(APIView):
         except Exception as e:
             logger.error(e)
             return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class InvoiceFileView(APIView):
+    def get(self, request):
+        order_uuid = request.query_params.get('order_uuid',None)
+        if order_uuid:
+            purchase_order = get_object_or_404(PurchaseOrder, order_uuid=order_uuid)
+
+        if purchase_order:
+            file_path = os.path.join(settings.MEDIA_ROOT, purchase_order.invoice_path)
+
+        if os.path.exists(file_path):
+            return FileResponse(open(file_path, "rb"), as_attachment=True, filename=os.path.basename(file_path))
+        return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
