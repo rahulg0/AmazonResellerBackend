@@ -7,6 +7,7 @@ class PurchaseOrder(models.Model):
   purchase_from = models.CharField(max_length=255, blank=True)
   quantity = models.IntegerField(blank=True, null=True)
   amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+  pack_of = models.IntegerField(blank=True, null=True, default=1)
   amount_per_unit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
   paid_with = models.CharField(max_length=255, blank=True)
   asin = models.CharField(max_length=20, blank=True)

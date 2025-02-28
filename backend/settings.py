@@ -76,9 +76,9 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'AmazonResellerBackendDB',
-        'USER': 'amazonreseller',
-        'PASSWORD': 'amazon123',
+        'NAME': 'postgres',
+        'USER': 'postgres',
+        'PASSWORD': 'rahul@123',
         'HOST': 'localhost',
         'PORT': '5432',
     }
