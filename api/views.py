@@ -227,6 +227,7 @@ class OrderAPIView(APIView):
                 try:
                     start_date = datetime.strptime(start_date, '%Y-%m-%d')
                     end_date = datetime.strptime(end_date, '%Y-%m-%d')
+                    end_date = end_date.replace(hour=23, minute=59, second=59)
                     query_conditions &= Q(PurchaseDate__gte=start_date) & Q(PurchaseDate__lte=end_date)
                 except ValueError:
                     return Response({"error": "Invalid date format. Use 'YYYY-MM-DD'."}, status=status.HTTP_400_BAD_REQUEST)
