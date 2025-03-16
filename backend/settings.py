@@ -41,6 +41,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'api'
 ]
+INSTALLED_APPS += [
+    'django_celery_beat',
+]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -51,6 +54,16 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Redis as the Celery broker
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+
+# Store task results in Redis (optional)
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+
+# Celery settings
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
 
 ROOT_URLCONF = 'backend.urls'
 
