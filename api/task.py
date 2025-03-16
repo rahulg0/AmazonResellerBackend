@@ -150,12 +150,6 @@ def add_order_to_db(access_token):
                             id_value=amazon_order_id if quantity_status != "ItemNotFound" else asin,
                             data=data
                         ))
-                else:
-                    error_orders.append(ErrorOrders(
-                        id_type="AmazonOrderId",
-                        id_value=amazon_order_id,
-                        data=data
-                    ))
             else:
                 error_orders.append(ErrorOrders(
                     id_type="ASIN",
