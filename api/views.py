@@ -6,8 +6,8 @@ from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import PurchaseOrder, Order, OrderItem
-from .serializers import PurchaseOrderSerializer, OrderSerializer
+from .models import *
+from .serializers import *
 import logging
 from decimal import Decimal
 from django.db import transaction
@@ -90,6 +90,7 @@ class PurchaseOrderView(APIView):
             data = request.data.copy()
             data['invoice_path'] = os.path.relpath(file_path, settings.MEDIA_ROOT)
             data['quantity'] = int(data['pack_of'])*int(data['quantity'])
+            asin = data.get('asin')
             print(data)
             if not OrderItem.objects.filter(ASIN=data['asin']).exists():
                 OrderItem.objects.create(
@@ -103,6 +104,7 @@ class PurchaseOrderView(APIView):
             serializer = PurchaseOrderSerializer(data=data)
             if serializer.is_valid():
                 serializer.save()
+                ErrorOrders.objects.filter(id_type="ASIN", id_value=asin).delete()
                 return Response({"message": "Data created successfully"}, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
@@ -144,9 +146,8 @@ class PurchaseOrderView(APIView):
 class OrderAPIView(APIView):
     def post(self, request):
         try:
-            invalid_orders = []
+            error_orders = {}
             serialized_data = []
-            not_found_items = []
             
             orders_data = request.data if isinstance(request.data, list) else [request.data]
 
@@ -154,59 +155,53 @@ class OrderAPIView(APIView):
                 asin = data.get("ASIN")
                 if is_asin_present(asin):
                     amazon_order_id = data.get("AmazonOrderId")
+
                     pack_of = int(PurchaseOrder.objects.get(asin=asin).pack_of)
-                    quantity = data.get("NumberOfItemsShipped", 0)*pack_of
-                    
+                    quantity = data.get("NumberOfItemsShipped", 0) * pack_of
                     selling_price = data.get("ItemPrice", {}).get("Amount")
-                    print(quantity,asin)
+
                     if not Order.objects.filter(AmazonOrderId=amazon_order_id).exists():
-                        if check_quantity(asin, quantity) == True:
+                        quantity_status = check_quantity(asin, quantity)
+
+                        if quantity_status is True and selling_price is not None:
                             logger.info(f"Valid order received for ASIN {asin}")
-                            if selling_price is not None:
-                                profit , profit_percentage = calculate_profit(
-                                    selling_price=float(selling_price),
-                                    asin=asin,
-                                    quantity=int(quantity),
-                                )
-                                print(profit,profit_percentage)
-                                data['profit'] = profit
-                                data['profit_percentage'] = Decimal(profit_percentage)
-                                serialized_data.append(data)
-                            else:
-                                logger.error(f"Invalid selling price for ASIN {asin}")
-                                invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
-                        elif check_quantity(asin, quantity) == "ItemNotFound":
-                            logger.error(f"Item not found for ASIN {asin}")
-                            not_found_items.append(asin)
+                            serialized_data.append(data)
                         else:
-                            logger.error(f"Invalid quantity for ASIN {asin}")
-                            invalid_orders.append(data.get("AmazonOrderId", "Unknown"))
+                            error_orders.append(ErrorOrders(
+                                id_type="AmazonOrderId" if quantity_status != "ItemNotFound" else "ASIN",
+                                id_value=amazon_order_id if quantity_status != "ItemNotFound" else asin,
+                                data=data
+                            ))
                     else:
-                        logger.error(f"Order already exists for AmazonOrderId {amazon_order_id}")
-                        invalid_orders.append(amazon_order_id)
+                        error_orders.append(ErrorOrders(
+                            id_type="AmazonOrderId",
+                            id_value=amazon_order_id,
+                            data=data
+                        ))
+                else:
+                    error_orders.append(ErrorOrders(
+                        id_type="ASIN",
+                        id_value=asin,
+                        data=data
+                    ))
+            if error_orders:
+                ErrorOrders.objects.bulk_create(error_orders)
+                logger.info(f"Saved {len(error_orders)} error orders")
 
             serializer = OrderSerializer(data=serialized_data, many=True)
-            if serializer.is_valid():
-                serializer.save()
-                logger.info(f"Orders saved successfully")
-
-                # for order, data in zip(orders, serialized_data):
-                #     selling_price = data.get("ItemPrice", {}).get("Amount")
-                #     if selling_price is not None:
-                #         calculate_profit(
-                #             selling_price=float(selling_price),
-                #             asin=order.asin,
-                #             quantity=order.quantity,
-                #         )
-
-                return Response(
-                    {
-                        "message": "Data created successfully",
-                        "InvalidAmazonOrderId": invalid_orders,
-                        "ItemNotFound": not_found_items,
-                    },
-                    status=status.HTTP_201_CREATED,
-                )
+            if serialized_data:
+                serializer = OrderSerializer(data=serialized_data, many=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    valid_order_ids = [order["AmazonOrderId"] for order in serialized_data]
+                    ErrorOrders.objects.filter(id_value__in=valid_order_ids).delete()
+                    logger.info(f"Orders saved successfully")
+                    return Response(
+                        {
+                            "message": "Data created successfully",
+                        },
+                        status=status.HTTP_201_CREATED,
+                    )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
@@ -271,34 +266,28 @@ class InvoiceFileView(APIView):
 
 @api_view(['GET'])
 def year_wise_purchase_orders(request):
-    year = request.GET.get('year')  # Get 'year' parameter from request
-
-    if year:  # If year is provided, return orders for that year
+    year = request.GET.get('year')
+    if year:
         orders = PurchaseOrder.objects.filter(created_at__year=year)
         serializer = PurchaseOrderSerializer(orders, many=True)
         return Response({"year": year, "orders": serializer.data})
-
-    # If no year is provided, return summary of orders grouped by year
     orders_summary = PurchaseOrder.objects.annotate(year=ExtractYear('created_at')) \
         .values('year') \
         .annotate(
             total_orders=Count('order_uuid'),
             total_amount=Sum('amount')
         ).order_by('-year')
-
     return Response({"summary": list(orders_summary)})
 
 @api_view(['GET'])
 def month_wise_profit(request):
-    year = request.GET.get('year')  # Get 'year' parameter from request
-    month = request.GET.get('month')  # Get 'month' parameter from request
-
-    if year and month:  # If both year and month are provided, return detailed orders
+    year = request.GET.get('year', None)
+    month = request.GET.get('month',None)
+    if year and month:
         orders = Order.objects.filter(PurchaseDate__year=year, PurchaseDate__month=month)
         serializer = OrderSerializer(orders, many=True)
         return Response({"year": year, "month": month, "orders": serializer.data})
-
-    elif year:  # If only year is provided, return monthly profit summary for that year
+    elif year:
         monthly_profit = Order.objects.filter(PurchaseDate__year=year) \
             .annotate(month=ExtractMonth('PurchaseDate')) \
             .values('month') \
@@ -306,15 +295,11 @@ def month_wise_profit(request):
                 total_profit=Sum('profit'),
                 total_profit_percentage=Sum('profit_percentage')
             ).order_by('month')
-
         return Response({"year": year, "monthly_profit": list(monthly_profit)})
-
-    # If no year is provided, return year-wise profit summary
     yearly_profit = Order.objects.annotate(year=ExtractYear('PurchaseDate')) \
         .values('year') \
         .annotate(
             total_profit=Sum('profit'),
             total_profit_percentage=Sum('profit_percentage')
         ).order_by('-year')
-
     return Response({"summary": list(yearly_profit)})
