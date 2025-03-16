@@ -264,6 +264,20 @@ class InvoiceFileView(APIView):
             return FileResponse(open(file_path, "rb"), as_attachment=True, filename=os.path.basename(file_path))
         return Response({"error": "File not found"}, status=status.HTTP_404_NOT_FOUND)
 
+class ErrorOrdersView(APIView):
+    def get(self, request):
+        try:
+            error_orders = ErrorOrders.objects.values("id_type", "id_value", "data")
+
+            if not error_orders:
+                return Response({"message": "No error orders found"}, status=status.HTTP_404_NOT_FOUND)
+
+            return Response({"error_orders": list(error_orders)}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(e)
+            return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 @api_view(['GET'])
 def year_wise_purchase_orders(request):
     year = request.GET.get('year')

@@ -7,5 +7,6 @@ urlpatterns = [
   path('get-invoice',InvoiceFileView.as_view(), name = 'invoice-download' ),
   path('purchase-orders/year-wise/', year_wise_purchase_orders, name='year-wise-purchase-orders'),
   path('orders/month-wise-profit/', month_wise_profit, name='month-wise-profit'),
+  path('error-orders', ErrorOrdersView.as_view(), name='error-order')
 
 ]
