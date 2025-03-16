@@ -69,6 +69,7 @@ class Order(models.Model):
     ConditionId = models.CharField(max_length=50,default=None, null=True, blank=True)
     PromotionDiscount = models.JSONField(default=dict)
     OrderItemId = models.CharField(max_length=100,default=None, null=True, blank=True)
+    have_profit = models.BooleanField(default=False,db_index=True)
     profit = models.DecimalField(max_digits=10, decimal_places=3, default=0)
     profit_percentage = models.DecimalField(max_digits=10, decimal_places=3, default=0)
 
@@ -78,3 +79,9 @@ class Order(models.Model):
 class OrderItem(models.Model):
    ASIN = models.CharField(max_length=50, primary_key=True)
    QuantityLeft = models.IntegerField(default=0)
+
+class ErrorOrders(models.Model):
+   error_order_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
+   id_type = models.CharField(max_length=50, default="")
+   id_value = models.CharField(max_length=50, default="")
+   data = models.JSONField(default=dict)
