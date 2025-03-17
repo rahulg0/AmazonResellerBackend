@@ -71,7 +71,9 @@ def check_quantity(asin, quantity):
         return "ItemNotFound"
 
 def is_asin_present(asin):
-    return PurchaseOrder.objects.filter(asin=asin).exists()
+    value = PurchaseOrder.objects.filter(asin=asin).exists()
+    logger.info("asin present: %s", value)
+    return value
 
 class PurchaseOrderView(APIView):
     def post(self, request):
@@ -154,6 +156,7 @@ class OrderAPIView(APIView):
             for data in orders_data:
                 asin = data.get("ASIN")
                 if is_asin_present(asin):
+                    logger.info("asin is present")
                     amazon_order_id = data.get("AmazonOrderId")
 
                     pack_of = int(PurchaseOrder.objects.get(asin=asin).pack_of)
@@ -161,30 +164,36 @@ class OrderAPIView(APIView):
                     selling_price = data.get("ItemPrice", {}).get("Amount")
 
                     if not Order.objects.filter(AmazonOrderId=amazon_order_id).exists():
+                        logger.info("New Order")
                         quantity_status = check_quantity(asin, quantity)
 
                         if quantity_status is True and selling_price is not None:
+                            logger.info("Quantity is available in inventory")
                             logger.info(f"Valid order received for ASIN {asin}")
                             serialized_data.append(data)
                         else:
+                            logger.info("Quantity Not available")
                             error_orders.append(ErrorOrders(
                                 id_type="AmazonOrderId" if quantity_status != "ItemNotFound" else "ASIN",
                                 id_value=amazon_order_id if quantity_status != "ItemNotFound" else asin,
                                 data=data
                             ))
                     else:
+                        logger.info("Order already present")
                         error_orders.append(ErrorOrders(
                             id_type="AmazonOrderId",
                             id_value=amazon_order_id,
                             data=data
                         ))
                 else:
+                    logger.info("Asin not present: %s", asin)
                     error_orders.append(ErrorOrders(
                         id_type="ASIN",
                         id_value=asin,
                         data=data
                     ))
             if error_orders:
+                logger.info("Order in error")
                 ErrorOrders.objects.bulk_create(error_orders)
                 logger.info(f"Saved {len(error_orders)} error orders")
 
