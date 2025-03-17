@@ -82,6 +82,6 @@ class OrderItem(models.Model):
 
 class ErrorOrders(models.Model):
    error_order_uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, primary_key=True)
-   id_type = models.CharField(max_length=50, default="")
-   id_value = models.CharField(max_length=50, default="")
+   order_id = models.CharField(max_length=50, default="")
+   reason = models.CharField(max_length=20, default="")
    data = models.JSONField(default=dict)
