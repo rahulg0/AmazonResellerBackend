@@ -146,7 +146,7 @@ class PurchaseOrderView(APIView):
 class OrderAPIView(APIView):
     def post(self, request):
         try:
-            error_orders = {}
+            error_orders = []
             serialized_data = []
             
             orders_data = request.data if isinstance(request.data, list) else [request.data]
@@ -202,8 +202,9 @@ class OrderAPIView(APIView):
                         },
                         status=status.HTTP_201_CREATED,
                     )
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+                else:
+                    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": "No valid orders to save"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(e)
             return Response(
