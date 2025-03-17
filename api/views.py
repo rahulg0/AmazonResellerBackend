@@ -271,7 +271,7 @@ class InvoiceFileView(APIView):
 class ErrorOrdersView(APIView):
     def get(self, request):
         try:
-            error_orders = ErrorOrders.objects.values("id_type", "id_value", "data")
+            error_orders = ErrorOrders.objects.values("order_id", "reason", "data")
 
             if not error_orders:
                 return Response({"message": "No error orders found"}, status=status.HTTP_404_NOT_FOUND)
