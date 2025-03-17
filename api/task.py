@@ -127,10 +127,9 @@ def add_order_to_db(access_token):
 
         for data in orders_data:
             asin = data.get("ASIN")
-
+            amazon_order_id = data.get("AmazonOrderId")
             if is_asin_present(asin):
                 logger.info("asin is present")
-                amazon_order_id = data.get("AmazonOrderId")
 
                 pack_of = int(PurchaseOrder.objects.get(asin=asin).pack_of)
                 quantity = data.get("NumberOfItemsShipped", 0) * pack_of
