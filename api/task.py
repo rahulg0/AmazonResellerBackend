@@ -122,7 +122,14 @@ def add_order_to_db(access_token):
         logger.info("adding order to db")
         error_orders = []
         serialized_data = []
-
+        existing_QuantityNotFound_error_orders = set(
+            ErrorOrders.objects.filter(reason="QuantityNotFound")
+            .values_list("order_id", flat=True)
+        )
+        existing_ItemNotFound_error_orders = set(
+            ErrorOrders.objects.filter(reason="ItemNotFound")
+            .values_list("order_id", flat=True)
+        )
         orders_data = orders if isinstance(orders, list) else [orders]
 
         for data in orders_data:
@@ -145,20 +152,23 @@ def add_order_to_db(access_token):
                         serialized_data.append(data)
                     else:
                         logger.info("Quantity Not available, status == %s", quantity_status)
-                        error_orders.append(ErrorOrders(
-                            order_id = amazon_order_id,
-                            reason = "QuantityNotFound" if  not quantity_status else quantity_status,
-                            data=data
-                        ))
+                        if amazon_order_id not in existing_QuantityNotFound_error_orders or amazon_order_id not in existing_ItemNotFound_error_orders:
+                            error_orders.append(ErrorOrders(
+                                order_id = amazon_order_id,
+                                reason = "QuantityNotFound" if  not quantity_status else quantity_status,
+                                data=data
+                            ))
                 else:
                     logger.info("Order already present")
+                    ErrorOrders.objects.filter(order_id=amazon_order_id).delete()
             else:
                 logger.info("Asin not present: %s", asin)
-                error_orders.append(ErrorOrders(
-                    order_id = amazon_order_id,
-                    reason="ItemNotFound",
-                    data=data
-                ))
+                if amazon_order_id not in existing_ItemNotFound_error_orders:
+                    error_orders.append(ErrorOrders(
+                        order_id = amazon_order_id,
+                        reason="ItemNotFound",
+                        data=data
+                    ))
         if error_orders:
             logger.info("Order in error")
             ErrorOrders.objects.bulk_create(error_orders)
