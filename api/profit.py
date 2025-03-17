@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from api.models import *
 from api.serializers import *
-from celery import shared_task
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -26,7 +25,7 @@ REFRESH_TOKEN=os.getenv("REFRESH_TOKEN")
 MARKETPLACE_ID=os.getenv("MARKETPLACE_ID")
 
 def get_amazon_oauth_token(refresh_token,client_id,client_secret):
-    print("taking auth")
+    logger.info("taking auth")
     url=REFRESH_URL
     headers={"Content-Type": "application/x-www-form-urlencoded"}
     data={
@@ -84,24 +83,22 @@ def update_profit():
                 shipment = shipment_events[0]  # Get first shipment event
                 shipment_items = shipment.get('ShipmentItemList', [])  # Get ShipmentItemList safely
             else:
-                print("No Shipment")
+                logger.info("No Shipment")
                 continue
-            print("Have shipment events")
+            logger.info("Have shipment events")
         else:
-            print("No shipment")
+            logger.info("No shipment")
             continue
-        print("check1")
         shipment = shipment_items[0]
         # print(json.dumps(shipment, indent=3))
         principal,shipping_charge,fba_fee,commission,promotion_discount = 0,0,0,0,0
         final_profit=0
-        print
         try:
             itemchargeList = shipment['ItemChargeList'] if 'ItemChargeList' in shipment else []
             ItemFeeList = shipment['ItemFeeList'] if 'ItemFeeList' in shipment else []
             PromotionList = shipment['PromotionList'] if 'PromotionList' in shipment else []
         except KeyError as e:
-            print(f"KeyError: {e} not found in shipment")
+            logger.error(f"KeyError: {e} not found in shipment")
         if itemchargeList:
             principal = next((charge["ChargeAmount"]["CurrencyAmount"] for charge in itemchargeList if charge["ChargeType"] == "Principal"), 0)
             shipping_charge = next((charge["ChargeAmount"]["CurrencyAmount"] for charge in itemchargeList if charge["ChargeType"] == "ShippingCharge"), 0)
@@ -110,10 +107,10 @@ def update_profit():
             commission = next((fee["FeeAmount"]["CurrencyAmount"] for fee in ItemFeeList if fee["FeeType"] == "Commission"), 0)
         if PromotionList:
             promotion_discount = next((promo["PromotionAmount"]["CurrencyAmount"] for promo in PromotionList if promo["PromotionAmount"]["CurrencyAmount"] != 0), 0)
-        print(amazon_order_id)
+        logger.info(amazon_order_id)
         print("principal,fba_fee,commission,shipping_charge,promotion_discount, COG",principal,fba_fee,commission,shipping_charge,promotion_discount,COG)
         final_profit = principal - float(COG) - abs(fba_fee) - abs(commission) + abs(shipping_charge) - abs(promotion_discount)
-        print("final profit ==", final_profit)
+        logger.info("final profit == %s", final_profit)
         for po, used_quantity in used_pos:
             po.profit += Decimal(final_profit) * Decimal(used_quantity) / Decimal(quantity)
             po.available_quantity -= used_quantity
@@ -129,6 +126,5 @@ def update_profit():
 
 
 #Driver Code
-@shared_task
 def main():
     update_profit()

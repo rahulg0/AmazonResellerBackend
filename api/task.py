@@ -1,5 +1,4 @@
 import requests
-from celery import shared_task
 import os
 import time
 from dotenv import load_dotenv
@@ -25,7 +24,7 @@ MARKETPLACE_ID=os.getenv("MARKETPLACE_ID")
 
 
 def get_amazon_oauth_token(refresh_token,client_id,client_secret):
-    print("taking auth")
+    logger.info("taking auth")
     url=REFRESH_URL
     headers={"Content-Type": "application/x-www-form-urlencoded"}
     data={
@@ -40,7 +39,7 @@ def get_amazon_oauth_token(refresh_token,client_id,client_secret):
 
 def get_amazon_orders(access_token):
     try:
-        print("inside getting amazon orders")
+        logger.info("inside getting amazon orders")
         url = BASE_URL + "/orders/v0/orders"
         created_after = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         params = {
@@ -56,16 +55,15 @@ def get_amazon_orders(access_token):
         request_count = 0
         while True:
             if request_count >= 20:  
-                print("Burst limit reached, waiting 60 seconds...")
+                logger.info("Burst limit reached, waiting 60 seconds...")
                 time.sleep(60)  
                 request_count = 0  
             response = requests.get(url, headers=headers, params=params)
             data = response.json().get("payload", {})
-            print(data)
             if "Orders" in data:
                 all_orders.extend(data["Orders"])
             if "NextToken" in data:
-                print("Fetching next page...")
+                logger.info("Fetching next page...")
                 params = {"NextToken": data["NextToken"]}
                 url = BASE_URL + "/orders/v0/orders"
             else:
@@ -73,21 +71,21 @@ def get_amazon_orders(access_token):
             request_count += 1
         return all_orders
     except Exception as e:
-        print("Exception in AO:", str(e))
+        logger.error("Exception in AO: %s", str(e))
 
 
 def get_details(access_token):
     try:
         all_orders = get_amazon_orders(access_token)
-        print("inside getting details")
+        logger.info("inside getting details")
         headers = {"x-amz-access-token": access_token}
-        print("size of all orders: ",len(all_orders))
+        logger.info("size of all orders: %s",len(all_orders))
         request_count = 0
         for order in all_orders:
             a_id = order['AmazonOrderId']
             url = BASE_URL + f'/orders/v0/orders/{a_id}/orderItems'
             if request_count >= 30:
-                print("Burst limit reached, waiting 2 seconds per request...")
+                logger.info("Burst limit reached, waiting 2 seconds per request...")
                 time.sleep(2)
             resp = requests.get(url, headers=headers)
             if resp.status_code == 200:
@@ -102,7 +100,7 @@ def get_details(access_token):
             request_count += 1
         return all_orders
     except Exception as e:
-        print("Exception in GD: ",str(e))
+        logger.error("Exception in GD: %s",str(e))
 
 def is_asin_present(asin):
     return PurchaseOrder.objects.filter(asin=asin).exists()
@@ -121,14 +119,13 @@ def check_quantity(asin, quantity):
 def add_order_to_db(access_token):
     try:
         orders = get_details(access_token)
-        print("adding order to db")
+        logger.info("adding order to db")
         error_orders = []
         serialized_data = []
 
         orders_data = orders if isinstance(orders, list) else [orders]
 
         for data in orders_data:
-            print(data)
             asin = data.get("ASIN")
 
             if is_asin_present(asin):
@@ -166,10 +163,9 @@ def add_order_to_db(access_token):
             ErrorOrders.objects.bulk_create(error_orders)
             logger.info(f"Saved {len(error_orders)} error orders")
     except Exception as e:
-        print("Exception in AOD: ",str(e))
+        logger.error("Exception in AOD: %s",str(e))
 
-@shared_task
 def main():
-    print("pilot.................")
+    logger.info("pilot.................")
     access_token=get_amazon_oauth_token(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET)
     add_order_to_db(access_token)
