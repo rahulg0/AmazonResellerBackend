@@ -171,7 +171,7 @@ def add_order_to_db(access_token):
             if serializer.is_valid():
                 serializer.save()
                 valid_order_ids = [order["AmazonOrderId"] for order in serialized_data]
-                ErrorOrders.objects.filter(id_value__in=valid_order_ids).delete()
+                ErrorOrders.objects.filter(order_id__in=valid_order_ids).delete()
                 logger.info(f"Orders saved successfully")
 
     except Exception as e:
