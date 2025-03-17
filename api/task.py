@@ -129,6 +129,7 @@ def add_order_to_db(access_token):
             asin = data.get("ASIN")
 
             if is_asin_present(asin):
+                logger.info("asin is present")
                 amazon_order_id = data.get("AmazonOrderId")
 
                 pack_of = int(PurchaseOrder.objects.get(asin=asin).pack_of)
@@ -136,32 +137,43 @@ def add_order_to_db(access_token):
                 selling_price = data.get("ItemPrice", {}).get("Amount")
 
                 if not Order.objects.filter(AmazonOrderId=amazon_order_id).exists():
+                    logger.info("New Order")
                     quantity_status = check_quantity(asin, quantity)
 
                     if quantity_status is True and selling_price is not None:
+                        logger.info("Quantity is available in inventory")
                         logger.info(f"Valid order received for ASIN {asin}")
                         serialized_data.append(data)
                     else:
+                        logger.info("Quantity Not available, status == %s", quantity_status)
                         error_orders.append(ErrorOrders(
-                            id_type="AmazonOrderId" if quantity_status != "ItemNotFound" else "ASIN",
-                            id_value=amazon_order_id if quantity_status != "ItemNotFound" else asin,
+                            order_id = amazon_order_id,
+                            reason = "QuantityNotFound" if  not quantity_status else quantity_status,
                             data=data
                         ))
+                else:
+                    logger.info("Order already present")
             else:
+                logger.info("Asin not present: %s", asin)
                 error_orders.append(ErrorOrders(
-                    id_type="ASIN",
-                    id_value=asin,
+                    order_id = amazon_order_id,
+                    reason="ItemNotFound",
                     data=data
                 ))
-
-        serializer = OrderSerializer(data=serialized_data, many=True)
-        if serializer.is_valid():
-            serializer.save()
-            logger.info("Orders saved successfully")
-
         if error_orders:
+            logger.info("Order in error")
             ErrorOrders.objects.bulk_create(error_orders)
             logger.info(f"Saved {len(error_orders)} error orders")
+
+        serializer = OrderSerializer(data=serialized_data, many=True)
+        if serialized_data:
+            serializer = OrderSerializer(data=serialized_data, many=True)
+            if serializer.is_valid():
+                serializer.save()
+                valid_order_ids = [order["AmazonOrderId"] for order in serialized_data]
+                ErrorOrders.objects.filter(id_value__in=valid_order_ids).delete()
+                logger.info(f"Orders saved successfully")
+
     except Exception as e:
         logger.error("Exception in AOD: %s",str(e))
 

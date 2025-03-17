@@ -106,7 +106,6 @@ class PurchaseOrderView(APIView):
             serializer = PurchaseOrderSerializer(data=data)
             if serializer.is_valid():
                 serializer.save()
-                ErrorOrders.objects.filter(id_type="ASIN", id_value=asin).delete()
                 return Response({"message": "Data created successfully"}, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
@@ -155,9 +154,9 @@ class OrderAPIView(APIView):
 
             for data in orders_data:
                 asin = data.get("ASIN")
+                amazon_order_id = data.get("AmazonOrderId")
                 if is_asin_present(asin):
                     logger.info("asin is present")
-                    amazon_order_id = data.get("AmazonOrderId")
 
                     pack_of = int(PurchaseOrder.objects.get(asin=asin).pack_of)
                     quantity = data.get("NumberOfItemsShipped", 0) * pack_of
@@ -172,24 +171,19 @@ class OrderAPIView(APIView):
                             logger.info(f"Valid order received for ASIN {asin}")
                             serialized_data.append(data)
                         else:
-                            logger.info("Quantity Not available")
+                            logger.info("Quantity Not available, status == %s", quantity_status)
                             error_orders.append(ErrorOrders(
-                                id_type="AmazonOrderId" if quantity_status != "ItemNotFound" else "ASIN",
-                                id_value=amazon_order_id if quantity_status != "ItemNotFound" else asin,
+                                order_id = amazon_order_id,
+                                reason = "QuantityNotFound" if  not quantity_status else quantity_status,
                                 data=data
                             ))
                     else:
                         logger.info("Order already present")
-                        error_orders.append(ErrorOrders(
-                            id_type="AmazonOrderId",
-                            id_value=amazon_order_id,
-                            data=data
-                        ))
                 else:
                     logger.info("Asin not present: %s", asin)
                     error_orders.append(ErrorOrders(
-                        id_type="ASIN",
-                        id_value=asin,
+                        order_id = amazon_order_id,
+                        reason="ItemNotFound",
                         data=data
                     ))
             if error_orders:
