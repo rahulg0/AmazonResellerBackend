@@ -149,14 +149,18 @@ class OrderAPIView(APIView):
         try:
             error_orders = []
             serialized_data = []
-            existing_QuantityNotFound_error_orders = set(
-                ErrorOrders.objects.filter(reason="QuantityNotFound")
+            existing_error_orders = set(
+                ErrorOrders.objects.all()
                 .values_list("order_id", flat=True)
             )
-            existing_ItemNotFound_error_orders = set(
-                ErrorOrders.objects.filter(reason="ItemNotFound")
-                .values_list("order_id", flat=True)
-            )
+            # existing_ItemNotFound_error_orders = set(
+            #     ErrorOrders.objects.filter(reason="ItemNotFound")
+            #     .values_list("order_id", flat=True)
+            # )
+            # existing_SellingPriceIsNone_error_orders = set(
+            #     ErrorOrders.objects.filter(reason="SellingPriceIsNone")
+            #     .values_list("order_id", flat=True)
+            # )
             
             orders_data = request.data if isinstance(request.data, list) else [request.data]
 
@@ -178,9 +182,16 @@ class OrderAPIView(APIView):
                             logger.info("Quantity is available in inventory")
                             logger.info(f"Valid order received for ASIN {asin}")
                             serialized_data.append(data)
+                        elif selling_price is None or selling_price == 0 and quantity is True:
+                            if amazon_order_id not in existing_error_orders:
+                                error_orders.append(ErrorOrders(
+                                    order_id = amazon_order_id,
+                                    reason = "ErrorInPriceOrQuantity",
+                                    data=data
+                                ))
                         else:
                             logger.info("Quantity Not available, status == %s", quantity_status)
-                            if amazon_order_id not in existing_QuantityNotFound_error_orders or amazon_order_id not in existing_ItemNotFound_error_orders:
+                            if amazon_order_id not in existing_error_orders:
                                 error_orders.append(ErrorOrders(
                                     order_id = amazon_order_id,
                                     reason = "QuantityNotFound" if  not quantity_status else "ItemNotFound",
@@ -191,7 +202,7 @@ class OrderAPIView(APIView):
                         ErrorOrders.objects.filter(order_id=amazon_order_id).delete()
                 else:
                     logger.info("Asin not present: %s", asin)
-                    if amazon_order_id not in existing_ItemNotFound_error_orders:
+                    if amazon_order_id not in existing_error_orders:
                         error_orders.append(ErrorOrders(
                             order_id = amazon_order_id,
                             reason="ItemNotFound",
