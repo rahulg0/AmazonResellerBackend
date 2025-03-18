@@ -183,7 +183,7 @@ class OrderAPIView(APIView):
                             if amazon_order_id not in existing_QuantityNotFound_error_orders or amazon_order_id not in existing_ItemNotFound_error_orders:
                                 error_orders.append(ErrorOrders(
                                     order_id = amazon_order_id,
-                                    reason = "QuantityNotFound" if  not quantity_status else quantity_status,
+                                    reason = "QuantityNotFound" if  not quantity_status else "ItemNotFound",
                                     data=data
                                 ))
                     else:
