@@ -142,7 +142,7 @@ def add_order_to_db(access_token):
                 quantity = data.get("NumberOfItemsShipped", 0) * pack_of
                 selling_price = data.get("ItemPrice", {}).get("Amount")
 
-                if not Order.objects.filter(AmazonOrderId=amazon_order_id).exists():
+                if not Order.objects.filter(AmazonOrderId=amazon_order_id).exists() and quantity > 0:
                     logger.info("New Order")
                     quantity_status = check_quantity(asin, quantity)
 
@@ -158,6 +158,8 @@ def add_order_to_db(access_token):
                                 reason = "QuantityNotFound" if  not quantity_status else "ItemNotFound",
                                 data=data
                             ))
+                elif quantity <= 0:
+                    logger.info("Quantity is less than equal to ZERO!!!!")
                 else:
                     logger.info("Order already present")
                     ErrorOrders.objects.filter(order_id=amazon_order_id).delete()
