@@ -23,22 +23,23 @@ REFRESH_TOKEN=os.getenv("REFRESH_TOKEN")
 MARKETPLACE_ID=os.getenv("MARKETPLACE_ID")
 
 
-def get_amazon_oauth_token(refresh_token,client_id,client_secret):
+def get_amazon_oauth_token():
     logger.info("taking auth")
     url=REFRESH_URL
     headers={"Content-Type": "application/x-www-form-urlencoded"}
     data={
         "grant_type":"refresh_token",
-        "refresh_token":refresh_token,
-        "client_id":client_id,
-        "client_secret":client_secret
+        "refresh_token":REFRESH_TOKEN,
+        "client_id":CLIENT_ID,
+        "client_secret":CLIENT_SECRET
     }
     response = requests.post(url, headers=headers, data=data)
     return response.json().get("access_token")
 
 
-def get_amazon_orders(access_token):
+def get_amazon_orders():
     try:
+        access_token = get_amazon_oauth_token()
         logger.info("inside getting amazon orders")
         url = BASE_URL + "/orders/v0/orders"
         created_after = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -69,19 +70,23 @@ def get_amazon_orders(access_token):
             else:
                 break
             request_count += 1
+            if request_count >= 10:
+                access_token=get_amazon_oauth_token()
         return all_orders
     except Exception as e:
         logger.error("Exception in AO: %s", str(e))
 
 
-def get_details(access_token):
+def get_details():
     try:
-        all_orders = get_amazon_orders(access_token)
+        all_orders = get_amazon_orders()
+        access_token = get_amazon_oauth_token()
         logger.info("inside getting details")
         headers = {"x-amz-access-token": access_token}
         logger.info("size of all orders: %s",len(all_orders))
         request_count = 0
         for order in all_orders:
+            logger.info("Order Count: %s", request_count)
             a_id = order['AmazonOrderId']
             url = BASE_URL + f'/orders/v0/orders/{a_id}/orderItems'
             if request_count >= 30:
@@ -98,6 +103,9 @@ def get_details(access_token):
             else:
                 logger.error(f"Failed to fetch details for {a_id}, Status Code: {resp.status_code}")
             request_count += 1
+            if request_count >= 50:
+                logger.error("Getting New Auth Token")
+                access_token = get_amazon_oauth_token()
         return all_orders
     except Exception as e:
         logger.error("Exception in GD: %s",str(e))
