@@ -44,7 +44,7 @@ def get_amazon_orders():
         url = BASE_URL + "/orders/v0/orders"
         created_after = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         params = {
-            "CreatedAfter": created_after,
+            "CreatedAfter": "2025-01-01T00:00:00Z",
             "OrderStatuses": "Shipped",
             "MarketplaceIds": MARKETPLACE_ID
         }
@@ -55,11 +55,15 @@ def get_amazon_orders():
         all_orders = []
         request_count = 0
         while True:
-            if request_count >= 20:
+            if request_count >= 15:
                 logger.info("Burst limit reached, waiting 60 seconds...")
                 time.sleep(60)  
                 request_count = 0  
             response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 429:
+                logger.info("Burst limit reached, waiting 60 seconds...")
+                time.sleep(60)
+                response = requests.get(url, headers=headers, params=params)
             data = response.json().get("payload", {})
             if "Orders" in data:
                 all_orders.extend(data["Orders"])
@@ -78,6 +82,7 @@ def get_amazon_orders():
         logger.error("Exception in AO: %s", str(e))
 
 
+
 def get_details():
     try:
         all_orders = get_amazon_orders()
@@ -91,10 +96,11 @@ def get_details():
             logger.info("Order Count: %s", request_count)
             a_id = order['AmazonOrderId']
             url = BASE_URL + f'/orders/v0/orders/{a_id}/orderItems'
-            if request_count >= 30:
-                logger.info("Burst limit reached, waiting 2 seconds per request...")
-                burst_count += 1
-                time.sleep(2)
+            if request_count % 100 == 0:
+                logger.error("Getting New Auth Token")
+                access_token = get_amazon_oauth_token()
+                request_count=0
+                time.sleep(10)
             resp = requests.get(url, headers=headers)
             if resp.status_code == 200:
                 data = resp.json().get('payload', {})
@@ -103,16 +109,28 @@ def get_details():
                     order.update(order_item)
                 else:
                     logger.error(f"Unexpected data format for OrderItems in {a_id}")
+            elif resp.status_code == 429:
+                logger.info("Burst limit reached, waiting 60 seconds...")
+                time.sleep(60)
+                resp = requests.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json().get('payload', {})
+                    order_item = data.get('OrderItems', {})[0]
+                    if isinstance(order_item, dict):
+                        order.update(order_item)
+                    else:
+                        logger.error(f"Unexpected data format for OrderItems in {a_id}")
             else:
                 logger.error(f"Failed to fetch details for {a_id}, Status Code: {resp.status_code}")
             request_count += 1
-            if burst_count >= 250:
-                logger.error("Getting New Auth Token")
-                access_token = get_amazon_oauth_token()
-                burst_count=0
+            # if burst_count >= 100:
+            #     logger.error("Getting New Auth Token")
+            #     access_token = get_amazon_oauth_token()
+            #     burst_count=0
         return all_orders
     except Exception as e:
         logger.error("Exception in GD: %s",str(e))
+
 
 def is_asin_present(asin):
     return PurchaseOrder.objects.filter(asin=asin).exists()
