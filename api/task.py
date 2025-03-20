@@ -70,7 +70,8 @@ def get_amazon_orders():
             else:
                 break
             request_count += 1
-            if request_count >= 10:
+            if request_count >= 20:
+                logger.error("Getting New Auth Token")
                 access_token=get_amazon_oauth_token()
         return all_orders
     except Exception as e:
@@ -124,9 +125,9 @@ def check_quantity(asin, quantity):
     except OrderItem.DoesNotExist:
         return "ItemNotFound"
 
-def add_order_to_db(access_token):
+def add_order_to_db():
     try:
-        orders = get_details(access_token)
+        orders = get_details()
         logger.info("adding order to db")
         error_orders = []
         serialized_data = []
@@ -209,5 +210,4 @@ def add_order_to_db(access_token):
 
 def main():
     logger.info("pilot.................")
-    access_token=get_amazon_oauth_token(REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET)
-    add_order_to_db(access_token)
+    add_order_to_db()
