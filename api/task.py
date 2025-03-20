@@ -55,7 +55,7 @@ def get_amazon_orders():
         all_orders = []
         request_count = 0
         while True:
-            if request_count >= 20:  
+            if request_count >= 20:
                 logger.info("Burst limit reached, waiting 60 seconds...")
                 time.sleep(60)  
                 request_count = 0  
@@ -86,12 +86,14 @@ def get_details():
         headers = {"x-amz-access-token": access_token}
         logger.info("size of all orders: %s",len(all_orders))
         request_count = 0
+        burst_count = 0
         for order in all_orders:
             logger.info("Order Count: %s", request_count)
             a_id = order['AmazonOrderId']
             url = BASE_URL + f'/orders/v0/orders/{a_id}/orderItems'
             if request_count >= 30:
                 logger.info("Burst limit reached, waiting 2 seconds per request...")
+                burst_count += 1
                 time.sleep(2)
             resp = requests.get(url, headers=headers)
             if resp.status_code == 200:
@@ -104,9 +106,10 @@ def get_details():
             else:
                 logger.error(f"Failed to fetch details for {a_id}, Status Code: {resp.status_code}")
             request_count += 1
-            if request_count >= 50:
+            if burst_count >= 250:
                 logger.error("Getting New Auth Token")
                 access_token = get_amazon_oauth_token()
+                burst_count=0
         return all_orders
     except Exception as e:
         logger.error("Exception in GD: %s",str(e))
