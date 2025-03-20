@@ -44,7 +44,7 @@ def get_amazon_orders(access_token):
         created_after = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         params = {
             "CreatedAfter": created_after,
-            "OrderStatus": "Shipped",
+            "OrderStatuses": "Shipped",
             "MarketplaceIds": MARKETPLACE_ID
         }
         headers = {
