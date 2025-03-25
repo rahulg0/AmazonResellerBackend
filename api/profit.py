@@ -128,7 +128,11 @@ def update_profit():
         ord.fba_fee = fba_fee
         ord.commission = commission
         ord.promotion_discount = promotion_discount
-        ord.save()
+        try:
+            ord.save()
+            print("Saved successfully!")
+        except Exception as e:
+            print("Error:", e)
 
 
 #Driver Code
