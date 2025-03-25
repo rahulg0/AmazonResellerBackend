@@ -37,7 +37,8 @@ def get_amazon_oauth_token(refresh_token,client_id,client_secret):
     response = requests.post(url, headers=headers, data=data)
     return response.json().get("access_token")
 
-def get_data(access_token, a_id, retries=3, retry_delay=2):
+def get_data(access_token, a_id, retries=3, retry_delay=5):
+    logger.info("Amazon Order ID: %s", a_id)
     url = f"{BASE_URL}/finances/v0/orders/{a_id}/financialEvents"
     headers = {
         "x-amz-access-token": access_token
@@ -49,6 +50,7 @@ def get_data(access_token, a_id, retries=3, retry_delay=2):
             return data if data else None
         if response.status_code == 429:
             if attempt < retries - 1:
+                logger.info("Rate limit exceeded, retrying in %s seconds...", retry_delay)
                 time.sleep(retry_delay)
             else:
                 raise Exception("Rate limit exceeded, retries exhausted.")
@@ -77,11 +79,11 @@ def update_profit():
         if remaining_quantity > 0:
             continue
         data = get_data(access_token, amazon_order_id)
-        if 'ShipmentEventList' in data:
+        if data and 'ShipmentEventList' in data:
             shipment_events = data['ShipmentEventList']
-            if shipment_events:  # Ensure it's not empty
-                shipment = shipment_events[0]  # Get first shipment event
-                shipment_items = shipment.get('ShipmentItemList', [])  # Get ShipmentItemList safely
+            if shipment_events:
+                shipment = shipment_events[0]
+                shipment_items = shipment.get('ShipmentItemList', [])
             else:
                 logger.info("No Shipment")
                 continue
@@ -107,7 +109,7 @@ def update_profit():
             commission = next((fee["FeeAmount"]["CurrencyAmount"] for fee in ItemFeeList if fee["FeeType"] == "Commission"), 0)
         if PromotionList:
             promotion_discount = next((promo["PromotionAmount"]["CurrencyAmount"] for promo in PromotionList if promo["PromotionAmount"]["CurrencyAmount"] != 0), 0)
-        logger.info(amazon_order_id)
+        # logger.info(amazon_order_id)
         print("principal,fba_fee,commission,shipping_charge,promotion_discount, COG",principal,fba_fee,commission,shipping_charge,promotion_discount,COG)
         final_profit = principal - float(COG) - abs(fba_fee) - abs(commission) + abs(shipping_charge) - abs(promotion_discount)
         logger.info("final profit == %s", final_profit)
@@ -122,6 +124,10 @@ def update_profit():
         ord.profit = final_profit
         ord.profit_percentage = (Decimal(final_profit) / COG) * 100 if COG > 0 else 0
         ord.have_profit = True
+        ord.shipping_charge = shipping_charge
+        ord.fba_fee = fba_fee
+        ord.commission = commission
+        ord.promotion_discount = promotion_discount
         ord.save()
 
 
