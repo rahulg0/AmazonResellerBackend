@@ -72,6 +72,10 @@ class Order(models.Model):
     have_profit = models.BooleanField(default=False,db_index=True)
     profit = models.DecimalField(max_digits=10, decimal_places=3, default=0)
     profit_percentage = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    shipping_charge = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
+    fba_fee = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
+    commission = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
+    promotion_discount = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
 
     def __str__(self):
         return self.AmazonOrderId
