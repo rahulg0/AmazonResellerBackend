@@ -59,7 +59,8 @@ def get_data(access_token, a_id, retries=3, retry_delay=5):
                 logger.info("Rate limit exceeded, retrying in %s seconds...", retry_delay)
                 time.sleep(retry_delay)
             else:
-                raise Exception("Rate limit exceeded, retries exhausted.")
+                logger.info("Rate limit exceeded, retries exhausted, waiting for 1 minute")
+                time.sleep(60)
         else:
             response.raise_for_status()
     return None
