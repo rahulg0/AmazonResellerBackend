@@ -76,6 +76,7 @@ class Order(models.Model):
     fba_fee = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
     commission = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
     promotion_discount = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
+    shipping_tax = models.DecimalField(max_digits=10, decimal_places=3, default=None, null=True)
 
     def __str__(self):
         return self.AmazonOrderId

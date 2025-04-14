@@ -111,6 +111,7 @@ def update_profit():
         if itemchargeList:
             principal = next((charge["ChargeAmount"]["CurrencyAmount"] for charge in itemchargeList if charge["ChargeType"] == "Principal"), 0)
             shipping_charge = next((charge["ChargeAmount"]["CurrencyAmount"] for charge in itemchargeList if charge["ChargeType"] == "ShippingCharge"), 0)
+            shipping_tax = next((charge["ChargeAmount"]["CurrencyAmount"] for charge in itemchargeList if charge["ChargeType"] == "ShippingTax"), 0)
         if ItemFeeList:
             fba_fee = next((fee["FeeAmount"]["CurrencyAmount"] for fee in ItemFeeList if fee["FeeType"] == "FBAPerUnitFulfillmentFee"), 0)
             commission = next((fee["FeeAmount"]["CurrencyAmount"] for fee in ItemFeeList if fee["FeeType"] == "Commission"), 0)
@@ -118,7 +119,7 @@ def update_profit():
             promotion_discount = next((promo["PromotionAmount"]["CurrencyAmount"] for promo in PromotionList if promo["PromotionAmount"]["CurrencyAmount"] != 0), 0)
         # logger.info(amazon_order_id)
         print("principal,fba_fee,commission,shipping_charge,promotion_discount, COG",principal,fba_fee,commission,shipping_charge,promotion_discount,COG)
-        final_profit = principal - float(COG) - abs(fba_fee) - abs(commission) + abs(shipping_charge) - abs(promotion_discount)
+        final_profit = principal - float(COG) - abs(fba_fee) - abs(commission) + abs(shipping_charge) - abs(promotion_discount) -abs(shipping_tax)
         logger.info("final profit == %s", final_profit)
         for po, used_quantity in used_pos:
             po.profit += Decimal(final_profit) * Decimal(used_quantity) / Decimal(quantity)
@@ -128,13 +129,15 @@ def update_profit():
                 po.profit_percentage = (po.profit / total_cog) * 100
             po.save()
         ord = Order.objects.get(AmazonOrderId=amazon_order_id)
-        ord.profit = final_profit
+        tax = ord.ItemTax.get("CurrencyCode", {}).get("Amount", 0)
+        ord.profit = final_profit - tax
         ord.profit_percentage = (Decimal(final_profit) / COG) * 100 if COG > 0 else 0
         ord.have_profit = True
-        ord.shipping_charge = shipping_charge
-        ord.fba_fee = fba_fee
-        ord.commission = commission
-        ord.promotion_discount = promotion_discount
+        ord.shipping_charge = abs(shipping_charge)
+        ord.fba_fee = abs(fba_fee)
+        ord.commission = abs(commission)
+        ord.shipping_tax = abs(shipping_tax)
+        ord.promotion_discount = abs(promotion_discount)
         try:
             ord.save()
             print("Saved successfully!")
